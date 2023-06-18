@@ -1,0 +1,306 @@
+%macro READ_MATRIX_FROM_FILE 3
+    
+    read_matrix_from_file_%2:
+        push
+        mov eax, 5                   ; sys_open
+        mov ebx, filename
+        mov ecx, filemode
+        int 0x80                     ; Open the file
+
+        mov ebx, eax                 ; Save file descriptor
+
+        mov eax, 3                   ; sys_read
+        mov ecx, buffer
+        mov edx, 256
+        int 0x80                     ; Read from the file
+
+        ; Process the contents of the buffer and populate the matrix
+
+        mov eax, 6                   ; sys_close
+        int 0x80                     ; Close the file
+
+        pop
+        ret
+%endmacro
+%macro READ_MATRIX_FROM_KEYBOARD 2
+    
+    
+    read_matrix_from_keyboard_%2:
+        push
+        mov esi, %2                  ; Matrix address
+
+        mov eax, 4                   ; sys_write
+        mov ebx, 1                   ; stdout
+        mov ecx, prompt
+        mov edx, prompt_len
+        int 0x80                     ; Print the prompt
+
+        mov eax, 3                   ; sys_read
+        mov ebx, 0                   ; stdin
+        mov ecx, input_buffer
+        mov edx, 256
+        int 0x80                     ; Read from stdin
+
+        ; Process the input_buffer and populate the matrix
+
+        pop
+        ret
+%endmacro
+%macro ADD_MATRICES 3
+    
+    add_matrices:
+        push
+        mov esi, %2                  ; Matrix A address
+        mov edi, %3                  ; Matrix B address
+        mov ecx, %1                  ; Number of elements
+
+        add_matrices_loop:
+            mov eax, [esi]
+            add eax, [edi]
+            mov [esi], eax
+            add esi, 4
+            add edi, 4
+            loop add_matrices_loop
+
+        pop
+        ret
+%endmacro
+%macro SUBTRACT_MATRICES 3
+    
+    subtract_matrices:
+        push
+        mov esi, %2                  ; Matrix A address
+        mov edi, %3                  ; Matrix B address
+        mov ecx, %1                  ; Number of elements
+
+        subtract_matrices_loop:
+            mov eax, [esi]
+            sub eax, [edi]
+            mov [esi], eax
+            add esi, 4
+            add edi, 4
+            loop subtract_matrices_loop
+
+        pop
+        ret
+%endmacro
+%macro MULTIPLY_MATRICES 4
+    
+    multiply_matrices:
+        push
+        mov esi, %2                  ; Matrix A address
+        mov edi, %3                  ; Matrix B address
+        mov ebx, %4                  ; Matrix C address
+        mov ecx, %1                  ; Matrix size (N)
+
+        multiply_matrices_outer_loop:
+            mov edx, ecx              ; Inner loop counter
+            xor eax, eax
+
+            multiply_matrices_inner_loop:
+                mov esi, %2          ; Reset A pointer for each iteration
+                mov edi, %3          ; Reset B pointer for each iteration
+                mov ebp, %4          ; Reset C pointer for each iteration
+                xor ebx, ebx
+
+                multiply_matrices_inner_calculation:
+                    mov eax, [esi]
+                    mov edx, [edi]
+                    imul eax, edx
+                    add ebx, eax
+                    add esi, 4
+                    add edi, 4
+                    loop multiply_matrices_inner_calculation
+
+                mov [ebp], ebx
+                add %2, 4
+                add %3, 4
+                add %4, 4
+                loop multiply_matrices_inner_loop
+
+            add %2, ecx * 4            ; Move to the next row of A
+            add %4, ecx * 4            ; Move to the next row of C
+            loop multiply_matrices_outer_loop
+
+        pop
+        ret
+%endmacro
+%macro MULTIPLY_BY_SCALAR 3
+    
+    multiply_by_scalar:
+        push
+        mov esi, %2                  ; Matrix address
+        mov edx, %3                  ; Scalar value
+        mov ecx, %1                  ; Number of elements
+
+        multiply_by_scalar_loop:
+            mov eax, [esi]
+            imul eax, edx
+            mov [esi], eax
+            add esi, 4
+            loop multiply_by_scalar_loop
+
+        pop
+        ret
+%endmacro
+section .data
+
+;Define constantes
+EXIT_SUCCES 	equ 0  ;Succeful operation
+SYS_exit	    equ 60 ;call code for terminate
+MAX_MATRIX_SIZE equ 10 ; Maximum size of a 10x10 matrix
+
+; Data declarantions
+matrix times 100 dd 0 ; Space for a 10x10 matrix
+filename db 0  ; Null-terminated string
+filemode db 0  ; Read-only mode
+buffer db 0
+prompt db 'Enter elements for matrix %1:', 0
+format db  0
+input_buffer times 256 db 0
+menu1 db '1. Leer de archivo  2. Leer de teclado  3. Sumar matrice  4. Restar matrice  5. Multiplicar por matrice  6. Multiplicar por escalar', 0
+menu_prompt db 'Selecciona una opción:', 0
+invalid_option db 'Opción inválida. Inténtalo de nuevo.', 0
+newline db 10, 0                ; Jump line '\n'
+size_prompt db 'De que tamano quieres el matrice',0  
+size_prompt_len db 0
+prompt_len db 0
+;*********
+;Code Section
+section .text
+	global _start
+	_start:
+    
+     
+    menu:
+            ; Imprimir el menú
+            mov eax, 4                   ; sys_write
+            mov ebx, 1                   ; stdout
+            mov ecx, menu1
+            mov edx, 120                  ; Longitud del mensaje
+            int 0x80                     ; Imprimir el menú
+            ; Imprimir un salto de línea
+            mov eax, 4                   ; sys_write
+            mov ebx, 1                   ; stdout
+            mov ecx, newline
+            mov edx, 1                   ; Longitud del carácter de nueva línea
+            int 0x80
+            ; Imprimir el menú
+            mov eax, 4                   ; sys_write
+            mov ebx, 1                   ; stdout
+            mov ecx, menu_prompt
+            mov edx, 23                  ; Longitud del mensaje
+            int 0x80                     ; Imprimir el menú
+
+            ; Imprimir un salto de línea
+            mov eax, 4                   ; sys_write
+            mov ebx, 1                   ; stdout
+            mov ecx, newline
+            mov edx, 1                   ; Longitud del carácter de nueva línea
+            int 0x80
+            ; Leer la opción del usuario
+            mov eax, 3                   ; sys_read
+            mov ebx, 0                   ; stdin
+            mov ecx, input_buffer
+            mov edx, 256
+            int 0x80                     ; Leer desde stdin
+
+            ; Convertir la opción a un número
+            xor eax, eax                 ; Limpiar eax
+            mov al, [input_buffer]
+            sub eax, '0'                 ; Restar el valor ASCII de '0'
+            cmp eax, 1                   ; Comprobar la opción
+
+            ; Saltar a la función correspondiente según la opción seleccionada
+            je read_matrix_from_file
+            cmp eax, 2
+            je read_matrix_from_keyboard
+            cmp eax, 3
+            je add_matrices
+            cmp eax, 4
+            je subtract_matrices
+            cmp eax, 5
+            je multiply_matrices
+            cmp eax, 6
+            je multiply_by_scalar
+            jmp invalid_option           ; Si la opción no es válida, mostrar mensaje de error y repetir el bucle
+
+        
+    ask_matrix_size:
+        ; Code to ask the user for the size of the matrix
+        mov eax, 4                   ; sys_write
+        mov ebx, 1                   ; stdout
+        mov ecx, size_prompt
+        mov edx, size_prompt_len
+        int 0x80                     ; Print the prompt
+
+     read_matrix_size:
+        ; Code to read the size of the matrix from the user
+        mov eax, 3                   ; sys_read
+        mov ebx, 0                   ; stdin
+        mov ecx, input_buffer
+        mov edx, 256
+        int 0x80                     ; Read from stdin
+
+        ; Convert the size to an integer and store it in esi
+        xor esi, esi                 ; Clear esi
+        mov esi, [input_buffer]
+        sub esi, '0'                 ; Subtract the ASCII value of '0'
+
+        ; Check if the matrix size is greater than 10
+        cmp esi, MAX_MATRIX_SIZE
+        jg size_error                ; If it's greater, jump to size_error
+        jmp read_matrix_from_file    ; If it's less or equal, proceed to read the matrix
+
+    size_error:
+        ; Print error message
+        mov eax, 4                   ; sys_write
+        mov ebx, 1                   ; stdout
+        mov ecx, size_error
+        mov edx, 46                  ; Length of the message
+        int 0x80                     ; Print error message
+
+        jmp ask_matrix_size          ; Ask the user for matrix s
+
+       read_matrix_from_file_1:
+        ; Llamar a la macro READ_MATRIX_FROM_FILE para leer la matriz desde un archivo
+        READ_MATRIX_FROM_FILE filename, buffer, 256
+        jmp last                     ; Volver al menú después de ejecutar la función
+
+    read_matrix_from_keyboard_2:
+        ; Llamar a la macro READ_MATRIX_FROM_KEYBOARD para leer la matriz desde el teclado
+        READ_MATRIX_FROM_KEYBOARD filename, bug
+        jmp menu                     ; Volver al menú después de ejecutar la función
+
+    add_matrices:
+        ; Llamar a la macro ADD_MATRICES para sumar matrices
+        ADD_MATRICES MAX_MATRIX_SIZE, matrix, matrix
+        jmp menu                     ; Volver al menú después de ejecutar la función
+
+    subtract_matrices:
+        ; Llamar a la macro SUBTRACT_MATRICES para restar matrices
+        SUBTRACT_MATRICES MAX_MATRIX_SIZE, matrix, matrix
+        jmp menu                     ; Volver al menú después de ejecutar la función
+
+    multiply_matrices:
+        ; Llamar a la macro MULTIPLY_MATRICES para multiplicar matrices
+        MULTIPLY_MATRICES MAX_MATRIX_SIZE, matrix, matrix, matrix
+        jmp menu                     ; Volver al menú después de ejecutar la función
+
+    multiply_by_scalar:
+        ; Llamar a la macro MULTIPLY_BY_SCALAR para multiplicar una matriz por un escalar
+        MULTIPLY_BY_SCALAR MAX_MATRIX_SIZE, matrix, 2
+        jmp menu                     ; Volver al menú después de ejecutar la función
+
+    invalid_option1:
+        ; Imprimir mensaje de opción inválida
+        mov eax, 4                   ; sys_write
+        mov ebx, 1                   ; stdout
+        mov ecx, invalid_option
+        mov edx, 29                  ; Longitud del mensaje
+        int 0x80                     ; Imprimir mensaje de opción inválida
+        jmp menu                     ; Volver al menú después de mostrar el mensaje de error
+    last:
+	mov rax, SYS_exit ;Call code for exit
+	mov rdi, EXIT_SUCCES ;Exit program with succes
+	syscall
